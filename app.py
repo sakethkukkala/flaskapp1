@@ -1,0 +1,85 @@
+from flask import Flask, request, redirect, url_for, render_template_string, flash
+from werkzeug.utils import secure_filename
+import os
+import subprocess
+
+app = Flask(__name__)
+app.secret_key = 'your_secret_key'
+UPLOAD_FOLDER = 'uploads'
+
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'cc'}
+
+def grade_output(executable_path):
+    # Define the input you'd like to send to the program
+    input_data = "freddy\nsusan\n".encode('utf-8')  # Input is already bytes
+    # Execute the compiled program with predefined input
+    result = subprocess.run(executable_path, input=input_data, capture_output=True)  # Removed text=True
+    output = result.stdout.decode('utf-8')  # Manually decode output here if needed
+
+    # Initialize score and check output for expected strings
+    CORRECT = 0
+    if 'freddy' in output:
+        CORRECT += 1
+    if 'susan' in output:
+        CORRECT += 1
+
+    return CORRECT, output
+
+
+
+@app.route('/', methods=['GET', 'POST'])
+
+def upload_file():
+    if request.method == 'POST':
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            flash('incorrect file submission')
+            return redirect(request.url)
+        
+        if file and allowed_file(file.filename):
+            filename_secure = secure_filename(file.filename)  # This now works with the import
+            filepath = os.path.join(UPLOAD_FOLDER, filename_secure)
+            file.save(filepath)
+
+
+
+
+            # Compile the uploaded file
+            output_executable = filepath + ".out"
+            compile_command = f"/usr/bin/g++ {filepath} -o {output_executable}"
+            retcode = subprocess.call(compile_command, shell=True)
+            if retcode != 0:
+                return "Compilation failed. Please check your code and try again."
+
+            # Grade the output
+            score, output = grade_output(output_executable)
+
+            return render_template_string('''
+                <!doctype html>
+                <title>Saketh Kukkala Autograder</title>
+                <h1>Compilation and Execution Results</h1>
+                <p>Score: {{score}} out of 2 correct.</p>
+                <h2>Program Output:</h2>
+                <pre>{{output}}</pre>
+                <a href="/">Try another file</a>
+		<h4>made by 811067416</h4>
+            ''', score=score, output=output)
+    
+    return '''
+    <!doctype html>
+    <title>Saketh Kukkala Autograder</title>
+    <h1>Saketh Kukkala Autograder</h1>
+    <form method=post enctype=multipart/form-data>
+      <input type=file name=file>
+      <input type=submit value=Upload>
+    </form>
+<h4>made by 811067416</h4> 
+    '''
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
+
